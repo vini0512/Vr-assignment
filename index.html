@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MA Geospatial Visualizations</title>
+<script src="./lib/d3.js"></script>
+<script src="./lib/d3jstopojson.v1.js"></script>
+<style>
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f0f4f8;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+h1 {
+    text-align: center;
+    margin: 20px;
+    font-size: 32px;
+    color: #2a4d69;
+}
+h3 {
+    text-align: center;
+    margin: 5px;
+    font-size: 20px;
+    color: #5a5a5a;
+}
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 90%;
+    max-width: 1200px;
+    margin: auto;
+}
+.map-section {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 40px;
+}
+.map-section h3 {
+    margin-bottom: 10px;
+    color: #444;
+}
+svg {
+    border: 1px solid #ccc;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+#tooltip {
+    position: absolute;
+    opacity: 0;
+    background-color: #fff;
+    border: 1px solid #000;
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+    pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+path {
+    stroke-width: 0.5px;
+    stroke: black;
+}
+path:hover {
+    opacity: 0.8;
+    stroke-width: 2px;
+}
+.highlight {
+    stroke: #ff0;
+    stroke-width: 2px;
+    opacity: 1;
+}
+</style>
+</head>
+<body>
+<h1>Geospatial Visualizations</h1>
+<h3>By Vinson Ramalingam</h3>
+<div id="tooltip"></div>
+<div class="container">
+    <div class="map-section">
+        <h3 style="color: #ff4d4d;">Population in 1980</h3>
+        <div id="mapA"></div>
+    </div>
+    <div class="map-section">
+        <h3 style="color: #66cc66;">Population Change (1980-2010)</h3>
+        <div id="mapB"></div>
+    </div>
+    <div class="map-section">
+        <h3 style="color: #ffcc00;">Gini Index by County (2019)</h3>
+        <div id="mapC"></div>
+    </div>
+</div>
+
+<script>
+// Dimensions for SVG maps
+const svgWidth = 800, svgHeight = 500;
+
+// Data
+const MA_counties = "./data/towns.topojson";
+const gini_index = "./data/gini_index.csv";
+
+// Load data and generate maps
+Promise.all([d3.json(MA_counties), d3.csv(gini_index)]).then(data => {
+    const topoData = data[0];
+    const giniData = data[1];
+
+    // Convert TopoJSON to GeoJSON for town boundaries
+    const geojson = topojson.feature(topoData, topoData.objects.ma);
+
+    // Generate each map
+    generateMapA(geojson, "#mapA", svgWidth, svgHeight);
+    generateMapB(geojson, "#mapB", svgWidth, svgHeight);
+    generateMapC(geojson, giniData, "#mapC", svgWidth, svgHeight);
+}).catch(error => console.error("Error loading data:", error));
+
+// Map A: Population in 1980 (Red color scale)
+function generateMapA(geojson, container, width, height) {
+    const svg = d3.select(container).append("svg")
+        .attr("width", width).attr("height", height);
+    const projection = d3.geoMercator().fitSize([width, height], geojson);
+    const geoPath = d3.geoPath().projection(projection);
+    const colorScale = d3.scaleSequential(d3.interpolateReds)  // Changed to Red color scale
+        .domain(d3.extent(geojson.features, d => d.properties.POP1980));
+    const tooltip = d3.select("#tooltip");
+
+    svg.selectAll("path")
+        .data(geojson.features)
+        .enter().append("path")
+        .attr("d", geoPath)
+        .attr("fill", d => colorScale(d.properties.POP1980))
+        .on("mouseenter", function (event, d) {
+            d3.select(this).classed("highlight", true);
+            tooltip.transition().duration(200).style("opacity", 0.9);
+            tooltip.html(`<strong>Town:</strong> ${d.properties.TOWN}<br><strong>Population 1980:</strong> ${d.properties.POP1980}`)
+                .style("left", `${event.pageX + 10}px`)
+                .style("top", `${event.pageY + 10}px`);
+        })
+        .on("mousemove", event => {
+            tooltip.style("left", `${event.pageX + 10}px`).style("top", `${event.pageY + 10}px`);
+        })
+        .on("mouseleave", function () {
+            d3.select(this).classed("highlight", false);
+            tooltip.transition().duration(400).style("opacity", 0);
+        });
+}
+
+// Map B: Population Change (1980-2010) (Green color scale)
+function generateMapB(geojson, container, width, height) {
+    const svg = d3.select(container).append("svg")
+        .attr("width", width).attr("height", height);
+    const projection = d3.geoMercator().fitSize([width, height], geojson);
+    const geoPath = d3.geoPath().projection(projection);
+    const colorScale = d3.scaleSequential(d3.interpolateGreens)  // Changed to Green color scale
+        .domain(d3.extent(geojson.features, d => d.properties.POP2010 - d.properties.POP1980));
+    const tooltip = d3.select("#tooltip");
+
+    svg.selectAll("path")
+        .data(geojson.features)
+        .enter().append("path")
+        .attr("d", geoPath)
+        .attr("fill", d => colorScale(d.properties.POP2010 - d.properties.POP1980))
+        .on("mouseenter", function (event, d) {
+            d3.select(this).classed("highlight", true);
+            tooltip.transition().duration(200).style("opacity", 0.9);
+            tooltip.html(`<strong>Town:</strong> ${d.properties.TOWN}<br><strong>Population Change (1980-2010):</strong> ${d.properties.POP2010 - d.properties.POP1980}`)
+                .style("left", `${event.pageX + 10}px`)
+                .style("top", `${event.pageY + 10}px`);
+        })
+        .on("mousemove", event => {
+            tooltip.style("left", `${event.pageX + 10}px`).style("top", `${event.pageY + 10}px`);
+        })
+        .on("mouseleave", function () {
+            d3.select(this).classed("highlight", false);
+            tooltip.transition().duration(400).style("opacity", 0);
+        });
+}
+
+// Map C: Gini Index by County (2019) (Yellow color scale)
+function generateMapC(geojson, giniData, container, width, height) {
+    const svg = d3.select(container).append("svg")
+        .attr("width", width).attr("height", height);
+    const projection = d3.geoMercator().fitSize([width, height], geojson);
+    const geoPath = d3.geoPath().projection(projection);
+
+    // Gini Index data and group by county ID
+    const giniByCounty = {};
+    giniData.forEach(d => {
+        const countyID = d.id.slice(-5);
+        if (!giniByCounty[countyID]) {
+            giniByCounty[countyID] = [];
+        }
+        giniByCounty[countyID].push({ year: +d.year, gini: +d['Estimate!!Gini Index'] });
+    });
+
+    // Gini index values for color coding
+    const gini2019 = giniData.filter(d => d.year === "2019");
+    const giniValues = gini2019.map(d => +d['Estimate!!Gini Index']);
+    const colorScale = d3.scaleSequential(d3.interpolateYlGn)  // Changed to Yellow-Green color scale
+        .domain([d3.min(giniValues), d3.max(giniValues)]);
+
+    const tooltip = d3.select("#tooltip")
+        .style("position", "absolute")
+        .style("opacity", 0)
+        .style("background-color", "white")
+        .style("border", "1px solid black")
+        .style("padding", "10px")
+        .style("border-radius", "4px")
+        .style("pointer-events", "none");
+
+    svg.selectAll("path")
+        .data(geojson.features)
+        .enter().append("path")
+        .attr("d", geoPath)
+        .attr("fill", d => {
+            const countyID = d.properties.FIPS_STCO;
+            const giniIndex = giniByCounty[countyID]?.find(entry => entry.year === 2019)?.gini;
+            return giniIndex ? colorScale(giniIndex) : "#ccc";
+        })
+        .on("mouseenter", (event, d) => {
+            const countyID = d.properties.FIPS_STCO;
+            const giniEntries = giniByCounty[countyID] || [];
+            const countyName = d.properties.COUNTY || d.properties.NAME || d.properties.COUNTY_NAME || d.properties.TOWN || "Unknown County";
+            giniEntries.sort((a, b) => a.year - b.year);
+
+            if (giniEntries.length) {
+                // Temporary SVG for the line chart inside the tooltip
+                tooltip.html(`<strong>County:</strong> ${countyName}<br><strong>Gini Index Trend:</strong>`)
+                    .style("left", `${event.pageX + 10}px`)
+                    .style("top", `${event.pageY + 10}px`)
+                    .transition().duration(200).style("opacity", 0.9);
+
+                // SVG inside the tooltip for the chart
+                const chartWidth = 250;
+                const chartHeight = 150;
+                const chartMargin = { top: 20, right: 20, bottom: 40, left: 40 };
+
+                const xScale = d3.scaleBand()
+                    .domain(giniEntries.map(d => d.year))
+                    .range([chartMargin.left, chartWidth - chartMargin.right])
+                    .padding(0.1);
+
+                const yScale = d3.scaleLinear()
+                    .domain([d3.min(giniEntries, d => d.gini), d3.max(giniEntries, d => d.gini)])
+                    .nice()
+                    .range([chartHeight - chartMargin.bottom, chartMargin.top]);
+
+                const line = d3.line()
+                    .x(d => xScale(d.year) + xScale.bandwidth() / 2)
+                    .y(d => yScale(d.gini));
+
+                const chartSVG = tooltip.append("svg")
+                    .attr("width", chartWidth)
+                    .attr("height", chartHeight);
+
+                // Axes
+                chartSVG.append("g")
+                    .attr("transform", `translate(0,${chartHeight - chartMargin.bottom})`)
+                    .call(d3.axisBottom(xScale).tickFormat(d3.format("d")));
+
+                chartSVG.append("g")
+                    .attr("transform", `translate(${chartMargin.left},0)`)
+                    .call(d3.axisLeft(yScale).ticks(5));
+
+                // Line path
+                chartSVG.append("path")
+                    .datum(giniEntries)
+                    .attr("fill", "none")
+                    .attr("stroke", "#f39c12")  // Line color
+                    .attr("stroke-width", 2)
+                    .attr("d", line);
+            }
+        })
+        .on("mousemove", event => {
+            tooltip.style("left", `${event.pageX + 10}px`).style("top", `${event.pageY + 10}px`);
+        })
+        .on("mouseleave", () => {
+            tooltip.transition().duration(400).style("opacity", 0);
+        });
+}
+</script>
+</body>
+</html>
